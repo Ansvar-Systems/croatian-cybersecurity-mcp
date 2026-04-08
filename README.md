@@ -90,16 +90,18 @@ npx @ansvar/croatian-cybersecurity-mcp
 
 ---
 
-## Available Tools (6)
+## Available Tools (8)
 
 | Tool | Description |
 |------|-------------|
-| `hr_cyber_search_guidance` | Full-text search across CERT.hr guidelines and technical standards. Covers national cybersecurity recommendations, NI... |
-| `hr_cyber_get_guidance` | Get a specific CERT.hr guidance document by reference (e.g., |
-| `hr_cyber_search_advisories` | Search CERT.hr security advisories and alerts. Returns advisories with severity, affected products, and CVE reference... |
-| `hr_cyber_get_advisory` | Get a specific CERT.hr security advisory by reference (e.g., |
-| `hr_cyber_list_frameworks` | List all CERT.hr frameworks and standard series covered in this MCP, including National Cybersecurity Strategy, NIS2 ... |
+| `hr_cyber_search_guidance` | Full-text search across CERT.hr guidelines and technical standards. Covers national cybersecurity recommendations, NIS2 implementation guidance, ISMS standards, and critical infrastructure requirements for Croatia. |
+| `hr_cyber_get_guidance` | Get a specific CERT.hr guidance document by reference (e.g., `CERT.hr-GUIDE-2024-01`). |
+| `hr_cyber_search_advisories` | Search CERT.hr security advisories and alerts. Returns advisories with severity, affected products, and CVE references. |
+| `hr_cyber_get_advisory` | Get a specific CERT.hr security advisory by reference (e.g., `CERT.hr-PUBDOC-2024-001`). |
+| `hr_cyber_list_frameworks` | List all CERT.hr frameworks and standard series covered in this MCP, including National Cybersecurity Strategy, NIS2 implementation, and ISMS guidance. |
 | `hr_cyber_about` | Return metadata about this MCP server: version, data source, coverage, and tool list. |
+| `hr_cyber_list_sources` | List all data sources with provenance metadata: name, URL, retrieval method, update frequency, and known limitations. |
+| `hr_cyber_check_data_freshness` | Check data freshness — returns latest document date and stale flag (threshold: 30 days). |
 
 All tools return structured data with source references and timestamps.
 
@@ -114,10 +116,10 @@ All content is sourced from official Croatian regulatory publications:
 ### Data Currency
 
 - Database updates are periodic and may lag official publications
-- Freshness checks run via GitHub Actions workflows
-- Last-updated timestamps in tool responses indicate data age
+- Use `hr_cyber_check_data_freshness` to query the latest document date and stale flag
+- Every tool response includes a `_meta.data_age` field with the most recent document date
 
-See `sources.yml` for full provenance metadata.
+See [COVERAGE.md](COVERAGE.md) for corpus scope and known gaps, and [`data/coverage.json`](data/coverage.json) for machine-readable provenance metadata.
 
 ---
 
@@ -180,8 +182,8 @@ npx @anthropic/mcp-inspector node dist/index.js   # Test with MCP Inspector
 ### Data Management
 
 ```bash
-npm run build:db       # Rebuild SQLite database from seed data
-npm run check-updates  # Check for new regulatory data
+npm run seed    # Seed database with sample data
+npm run ingest  # Crawl and ingest latest CERT.hr data
 ```
 
 ---
@@ -218,7 +220,7 @@ Apache License 2.0. See [LICENSE](./LICENSE) for details.
 
 ### Data Licenses
 
-Regulatory data sourced from official government publications. See `sources.yml` for per-source licensing details.
+Regulatory data sourced from official Croatian government publications (CERT.hr / CARNET). See [COVERAGE.md](COVERAGE.md) for per-source licensing details.
 
 ---
 

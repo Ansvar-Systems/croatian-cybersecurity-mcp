@@ -26,6 +26,7 @@ import {
   searchAdvisories,
   getAdvisory,
   listFrameworks,
+  getLatestDataDate,
 } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -153,6 +154,26 @@ const TOOLS = [
       required: [],
     },
   },
+  {
+    name: "hr_cyber_list_sources",
+    description:
+      "List all data sources used by this MCP server with provenance metadata: name, URL, retrieval method, update frequency, and known limitations.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "hr_cyber_check_data_freshness",
+    description:
+      "Check data freshness for each source. Reports the latest document date, whether data is stale (>30 days old), and instructions for triggering updates.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // --- Zod schemas for argument validation --------------------------------------
@@ -181,10 +202,20 @@ const GetAdvisoryArgs = z.object({
 
 // --- Helper ------------------------------------------------------------------
 
+function buildMeta() {
+  return {
+    disclaimer:
+      "This is a research tool, not legal or regulatory advice. Verify all references against primary sources before making compliance decisions.",
+    data_age: getLatestDataDate(),
+    copyright: "© CERT.hr / CARNET",
+    source_url: "https://www.cert.hr/",
+  };
+}
+
 function textContent(data: unknown) {
   return {
     content: [
-      { type: "text" as const, text: JSON.stringify(data, null, 2) },
+      { type: "text" as const, text: JSON.stringify({ ...(data as object), _meta: buildMeta() }, null, 2) },
     ],
   };
 }
@@ -270,6 +301,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             frameworks: "National Cybersecurity Strategy, NIS2 implementation, ISMS guidance",
           },
           tools: TOOLS.map((t) => ({ name: t.name, description: t.description })),
+        });
+      }
+
+      case "hr_cyber_list_sources": {
+        return textContent({
+          sources: [
+            {
+              name: "CERT.hr — Croatian National CERT",
+              url: "https://www.cert.hr/",
+              retrieval_method: "Web crawler (cheerio) — publicus.cert.hr and www.cert.hr",
+              update_frequency: "Periodic (triggered via GitHub Actions workflow)",
+              license: "Public domain — official Croatian government publications",
+              limitations: [
+                "Restricted or classified documents are not available",
+                "Pre-2023 advisories may be incomplete",
+                "NIS2 legislative changes pending full transposition may not yet be reflected",
+                "Machine-translated English titles may contain errors",
+              ],
+            },
+          ],
+        });
+      }
+
+      case "hr_cyber_check_data_freshness": {
+        const latestDate = getLatestDataDate();
+        const isStale =
+          latestDate === null ||
+          (Date.now() - new Date(latestDate).getTime()) / 86_400_000 > 30;
+        return textContent({
+          freshness: {
+            latest_document_date: latestDate,
+            is_stale: isStale,
+            stale_threshold_days: 30,
+            update_instructions:
+              "Run the ingest workflow via GitHub Actions or execute 'npm run ingest' locally to refresh data.",
+          },
         });
       }
 

@@ -29,6 +29,7 @@ import {
   searchAdvisories,
   getAdvisory,
   listFrameworks,
+  getLatestDataDate,
 } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -53,11 +54,11 @@ const TOOLS = [
   {
     name: "hr_cyber_search_guidance",
     description:
-      "Full-text search across BSI guidelines and technical reports. Covers Technical Guidelines (TR series), IT-Grundschutz building blocks, BSI Standards, and recommendations.",
+      "Full-text search across CERT.hr guidelines and technical standards. Covers national cybersecurity recommendations, NIS2 implementation guidance, ISMS standards, and critical infrastructure protection requirements for Croatia. Returns matching documents with reference, title, series, and summary.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        query: { type: "string", description: "Search query (e.g., 'TLS Kryptographie', 'IT-Grundschutz Server')" },
+        query: { type: "string", description: "Search query (e.g., 'kibernetička sigurnost', 'NIS2', 'ISMS', 'kriptografija')" },
         type: {
           type: "string",
           enum: ["guideline", "standard", "recommendation", "regulation"],
@@ -66,14 +67,14 @@ const TOOLS = [
         series: {
           type: "string",
           enum: ["CERT.hr", "NIS2", "ISMS"],
-          description: "Filter by BSI series. Optional.",
+          description: "Filter by framework series. Optional.",
         },
         status: {
           type: "string",
           enum: ["current", "superseded", "draft"],
-          description: "Filter by document status. Optional.",
+          description: "Filter by document status. Defaults to returning all statuses.",
         },
-        limit: { type: "number", description: "Max results (default 20)." },
+        limit: { type: "number", description: "Maximum number of results to return. Defaults to 20." },
       },
       required: ["query"],
     },
@@ -81,11 +82,11 @@ const TOOLS = [
   {
     name: "hr_cyber_get_guidance",
     description:
-      "Get a specific BSI guidance document by reference (e.g., 'BSI TR-03116', 'BSI-Standard 200-1', 'SYS.1.1').",
+      "Get a specific CERT.hr guidance document by reference (e.g., 'CERT.hr-GUIDE-2024-01', 'CERT.hr-REC-2023-02').",
     inputSchema: {
       type: "object" as const,
       properties: {
-        reference: { type: "string", description: "BSI document reference" },
+        reference: { type: "string", description: "CERT.hr document reference" },
       },
       required: ["reference"],
     },
@@ -93,28 +94,28 @@ const TOOLS = [
   {
     name: "hr_cyber_search_advisories",
     description:
-      "Search BSI security advisories and alerts. Returns advisories with severity, affected products, and CVE references.",
+      "Search CERT.hr security advisories and alerts. Returns advisories with severity, affected products, and CVE references where available.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        query: { type: "string", description: "Search query (e.g., 'kritische Schwachstelle', 'Ransomware')" },
+        query: { type: "string", description: "Search query (e.g., 'kritična ranjivost', 'ransomware', 'VPN')" },
         severity: {
           type: "string",
           enum: ["critical", "high", "medium", "low"],
           description: "Filter by severity level. Optional.",
         },
-        limit: { type: "number", description: "Max results (default 20)." },
+        limit: { type: "number", description: "Maximum number of results to return. Defaults to 20." },
       },
       required: ["query"],
     },
   },
   {
     name: "hr_cyber_get_advisory",
-    description: "Get a specific BSI security advisory by reference (e.g., 'BSI-CB-K24-0001').",
+    description: "Get a specific CERT.hr security advisory by reference (e.g., 'CERT.hr-PUBDOC-2024-001').",
     inputSchema: {
       type: "object" as const,
       properties: {
-        reference: { type: "string", description: "BSI advisory reference" },
+        reference: { type: "string", description: "CERT.hr advisory reference" },
       },
       required: ["reference"],
     },
@@ -122,12 +123,24 @@ const TOOLS = [
   {
     name: "hr_cyber_list_frameworks",
     description:
-      "List all BSI frameworks and standard series covered in this MCP.",
+      "List all CERT.hr frameworks and standard series covered in this MCP, including National Cybersecurity Strategy, NIS2 implementation, and ISMS guidance for Croatia.",
     inputSchema: { type: "object" as const, properties: {}, required: [] },
   },
   {
     name: "hr_cyber_about",
     description: "Return metadata about this MCP server: version, data source, coverage, and tool list.",
+    inputSchema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "hr_cyber_list_sources",
+    description:
+      "List all data sources used by this MCP server with provenance metadata: name, URL, retrieval method, update frequency, and known limitations.",
+    inputSchema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "hr_cyber_check_data_freshness",
+    description:
+      "Check data freshness for each source. Reports the latest document date, whether data is stale (>30 days old), and instructions for triggering updates.",
     inputSchema: { type: "object" as const, properties: {}, required: [] },
   },
 ];
@@ -136,8 +149,8 @@ const TOOLS = [
 
 const SearchGuidanceArgs = z.object({
   query: z.string().min(1),
-  type: z.enum(["technical_guideline", "it_grundschutz", "standard", "recommendation"]).optional(),
-  series: z.enum(["TR", "IT-Grundschutz", "BSI-Standard"]).optional(),
+  type: z.enum(["guideline", "standard", "recommendation", "regulation"]).optional(),
+  series: z.enum(["CERT.hr", "NIS2", "ISMS"]).optional(),
   status: z.enum(["current", "superseded", "draft"]).optional(),
   limit: z.number().int().positive().max(100).optional(),
 });
@@ -171,9 +184,18 @@ function createMcpServer(): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
 
+    const dataAge = getLatestDataDate();
+    const meta = {
+      disclaimer:
+        "This is a research tool, not legal or regulatory advice. Verify all references against primary sources before making compliance decisions.",
+      data_age: dataAge,
+      copyright: "© CERT.hr / CARNET",
+      source_url: "https://www.cert.hr/",
+    };
+
     function textContent(data: unknown) {
       return {
-        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+        content: [{ type: "text" as const, text: JSON.stringify({ ...(data as object), _meta: meta }, null, 2) }],
       };
     }
 
@@ -236,9 +258,50 @@ function createMcpServer(): Server {
             name: SERVER_NAME,
             version: pkgVersion,
             description:
-              "BSI (CERT.hr (Nacionalni CERT)) MCP server. Provides access to BSI technical guidelines, IT-Grundschutz building blocks, BSI Standards, and security advisories.",
-            data_source: "BSI (https://www.bsi.bund.de/)",
+              "CERT.hr (Nacionalni CERT — Croatian National CERT) MCP server. Provides access to CERT.hr guidelines, technical standards, NIS2 implementation guidance, and security advisories for Croatia.",
+            data_source: "CERT.hr (https://www.cert.hr/)",
+            coverage: {
+              guidance: "CERT.hr technical guidelines, recommendations, NIS2 implementation standards",
+              advisories: "CERT.hr security advisories and vulnerability alerts",
+              frameworks: "National Cybersecurity Strategy, NIS2 implementation, ISMS guidance",
+            },
             tools: TOOLS.map((t) => ({ name: t.name, description: t.description })),
+          });
+        }
+
+        case "hr_cyber_list_sources": {
+          return textContent({
+            sources: [
+              {
+                name: "CERT.hr — Croatian National CERT",
+                url: "https://www.cert.hr/",
+                retrieval_method: "Web crawler (cheerio) — publicus.cert.hr and www.cert.hr",
+                update_frequency: "Periodic (triggered via GitHub Actions workflow)",
+                license: "Public domain — official Croatian government publications",
+                limitations: [
+                  "Restricted or classified documents are not available",
+                  "Pre-2023 advisories may be incomplete",
+                  "NIS2 legislative changes pending full transposition may not yet be reflected",
+                  "Machine-translated English titles may contain errors",
+                ],
+              },
+            ],
+          });
+        }
+
+        case "hr_cyber_check_data_freshness": {
+          const latestDate = getLatestDataDate();
+          const isStale =
+            latestDate === null ||
+            (Date.now() - new Date(latestDate).getTime()) / 86_400_000 > 30;
+          return textContent({
+            freshness: {
+              latest_document_date: latestDate,
+              is_stale: isStale,
+              stale_threshold_days: 30,
+              update_instructions:
+                "Run the ingest workflow via GitHub Actions or execute 'npm run ingest' locally to refresh data.",
+            },
           });
         }
 
