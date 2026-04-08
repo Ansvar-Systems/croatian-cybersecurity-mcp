@@ -1,0 +1,21 @@
+{
+  "source": "CERT.hr — Croatian National CERT (Nacionalni CERT)",
+  "source_url": "https://www.cert.hr/",
+  "coverage_as_of": "2025-01-01",
+  "document_counts": {
+    "guidance": 0,
+    "advisories": 0,
+    "frameworks": 0,
+    "note": "Run 'npm run ingest' to populate the database. Counts reflect ingested data, not total available publications."
+  },
+  "known_gaps": [
+    "Restricted or classified CERT.hr documents are not publicly available and are excluded",
+    "Pre-2023 advisories may be incomplete — CERT.hr archive coverage before 2023 is partial",
+    "NIS2 legislative changes pending full Croatian transposition may not yet be reflected",
+    "Machine-translated English titles (title_en field) may contain minor errors",
+    "Documents published only in Croatian may have limited English metadata"
+  ],
+  "freshness_tool": "hr_cyber_check_data_freshness",
+  "update_frequency": "Periodic — triggered via GitHub Actions ingest workflow",
+  "license": "Public domain — official Croatian government publications"
+}

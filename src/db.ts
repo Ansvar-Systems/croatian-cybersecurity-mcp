@@ -1,5 +1,5 @@
 /**
- * SQLite database access layer for the German Cybersecurity (BSI) MCP server.
+ * SQLite database access layer for the Croatian Cybersecurity (CERT.hr) MCP server.
  *
  * Schema:
  *   - guidance    — CERT.hr guidelines, technical standards, and recommendations
@@ -260,4 +260,24 @@ export function listFrameworks(): Framework[] {
   return db
     .prepare("SELECT * FROM frameworks ORDER BY id")
     .all() as Framework[];
+}
+
+// --- Utility queries ----------------------------------------------------------
+
+/**
+ * Returns the most recent document date across guidance and advisories tables,
+ * or null if the database is empty.
+ */
+export function getLatestDataDate(): string | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT MAX(d) AS latest FROM (
+         SELECT MAX(date) AS d FROM guidance
+         UNION ALL
+         SELECT MAX(date) AS d FROM advisories
+       )`,
+    )
+    .get() as { latest: string | null };
+  return row?.latest ?? null;
 }
